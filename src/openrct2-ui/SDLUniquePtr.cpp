@@ -11,6 +11,14 @@
 
 #include <SDL.h>
 
+void SDLDeleter::operator()(SDL_Renderer* ptr) const
+{
+    if (ptr != nullptr)
+    {
+        SDL_DestroyRenderer(ptr);
+    }
+}
+
 void SDLDeleter::operator()(SDL_RWops* ptr) const
 {
     if (ptr != nullptr)

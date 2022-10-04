@@ -11,6 +11,7 @@
 
 #include <memory>
 
+struct SDL_Renderer;
 struct SDL_RWops;
 struct SDL_Window;
 
@@ -19,9 +20,11 @@ struct SDL_Window;
  */
 struct SDLDeleter
 {
+    void operator()(SDL_Renderer* ptr) const;
     void operator()(SDL_RWops* ptr) const;
     void operator()(SDL_Window* ptr) const;
 };
 
+using UniqueSDLRenderer = std::unique_ptr<SDL_Renderer, SDLDeleter>;
 using UniqueSDLRWOps = std::unique_ptr<SDL_RWops, SDLDeleter>;
 using UniqueSDLWindow = std::unique_ptr<SDL_Window, SDLDeleter>;

@@ -12,6 +12,7 @@
 #include <SDL.h>
 #include <cmath>
 #include <memory>
+#include <openrct2-ui/SDLUniquePtr.h>
 #include <openrct2/Game.h>
 #include <openrct2/common.h>
 #include <openrct2/config/Config.h>
@@ -32,11 +33,15 @@ private:
     constexpr static uint32_t DIRTY_VISUAL_TIME = 32;
 
     std::shared_ptr<IUiContext> const _uiContext;
-    SDL_Window* _window = nullptr;
-    SDL_Renderer* _sdlRenderer = nullptr;
+    SDL_Window* _window = nullptr; // Non-owning pointer
+
+    // The order of those fields matters! _sdlRenderer must be destructed after the other fields, so it must be first in the
+    // class.
+    UniqueSDLRenderer _sdlRenderer;
     SDL_Texture* _screenTexture = nullptr;
     SDL_Texture* _scaledScreenTexture = nullptr;
     SDL_PixelFormat* _screenTextureFormat = nullptr;
+
     uint32_t _paletteHWMapped[256] = { 0 };
     uint32_t _lightPaletteHWMapped[256] = { 0 };
 
@@ -62,12 +67,12 @@ public:
     ~HardwareDisplayDrawingEngine() override
     {
         SDL_FreeFormat(_screenTextureFormat);
-        SDL_DestroyRenderer(_sdlRenderer);
     }
 
     void Initialise() override
     {
-        _sdlRenderer = SDL_CreateRenderer(_window, -1, SDL_RENDERER_ACCELERATED | (_useVsync ? SDL_RENDERER_PRESENTVSYNC : 0));
+        _sdlRenderer = UniqueSDLRenderer(
+            SDL_CreateRenderer(_window, -1, SDL_RENDERER_ACCELERATED | (_useVsync ? SDL_RENDERER_PRESENTVSYNC : 0)));
     }
 
     void SetVSync(bool vsync) override
@@ -75,9 +80,9 @@ public:
         if (_useVsync != vsync)
         {
             _useVsync = vsync;
-            SDL_DestroyRenderer(_sdlRenderer);
             _screenTexture = nullptr;
             _scaledScreenTexture = nullptr;
+            _sdlRenderer.reset();
             Initialise();
             Resize(_uiContext->GetWidth(), _uiContext->GetHeight());
         }
@@ -97,7 +102,7 @@ public:
         SDL_FreeFormat(_screenTextureFormat);
 
         SDL_RendererInfo rendererInfo = {};
-        int32_t result = SDL_GetRendererInfo(_sdlRenderer, &rendererInfo);
+        int32_t result = SDL_GetRendererInfo(_sdlRenderer.get(), &rendererInfo);
         if (result < 0)
         {
             log_warning("HWDisplayDrawingEngine::Resize error: %s", SDL_GetError());
@@ -135,16 +140,16 @@ public:
             char scaleQualityBuffer[4];
             snprintf(scaleQualityBuffer, sizeof(scaleQualityBuffer), "%d", static_cast<int32_t>(scaleQuality));
             SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
-            _screenTexture = SDL_CreateTexture(_sdlRenderer, pixelFormat, SDL_TEXTUREACCESS_STREAMING, width, height);
+            _screenTexture = SDL_CreateTexture(_sdlRenderer.get(), pixelFormat, SDL_TEXTUREACCESS_STREAMING, width, height);
             SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, scaleQualityBuffer);
 
             uint32_t scale = std::ceil(gConfigGeneral.window_scale);
             _scaledScreenTexture = SDL_CreateTexture(
-                _sdlRenderer, pixelFormat, SDL_TEXTUREACCESS_TARGET, width * scale, height * scale);
+                _sdlRenderer.get(), pixelFormat, SDL_TEXTUREACCESS_TARGET, width * scale, height * scale);
         }
         else
         {
-            _screenTexture = SDL_CreateTexture(_sdlRenderer, pixelFormat, SDL_TEXTUREACCESS_STREAMING, width, height);
+            _screenTexture = SDL_CreateTexture(_sdlRenderer.get(), pixelFormat, SDL_TEXTUREACCESS_STREAMING, width, height);
         }
 
         uint32_t format;
@@ -221,15 +226,15 @@ private:
         }
         if (smoothNN)
         {
-            SDL_SetRenderTarget(_sdlRenderer, _scaledScreenTexture);
-            SDL_RenderCopy(_sdlRenderer, _screenTexture, nullptr, nullptr);
+            SDL_SetRenderTarget(_sdlRenderer.get(), _scaledScreenTexture);
+            SDL_RenderCopy(_sdlRenderer.get(), _screenTexture, nullptr, nullptr);
 
-            SDL_SetRenderTarget(_sdlRenderer, nullptr);
-            SDL_RenderCopy(_sdlRenderer, _scaledScreenTexture, nullptr, nullptr);
+            SDL_SetRenderTarget(_sdlRenderer.get(), nullptr);
+            SDL_RenderCopy(_sdlRenderer.get(), _scaledScreenTexture, nullptr, nullptr);
         }
         else
         {
-            SDL_RenderCopy(_sdlRenderer, _screenTexture, nullptr, nullptr);
+            SDL_RenderCopy(_sdlRenderer.get(), _screenTexture, nullptr, nullptr);
         }
 
         if (gShowDirtyVisuals)
@@ -243,7 +248,7 @@ private:
             OverlayPreRenderCheck();
         }
 
-        SDL_RenderPresent(_sdlRenderer);
+        SDL_RenderPresent(_sdlRenderer.get());
 
         if (isSteamOverlayActive && gConfigGeneral.steam_overlay_pause)
         {
@@ -340,7 +345,7 @@ private:
         float scaleX = gConfigGeneral.window_scale;
         float scaleY = gConfigGeneral.window_scale;
 
-        SDL_SetRenderDrawBlendMode(_sdlRenderer, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawBlendMode(_sdlRenderer.get(), SDL_BLENDMODE_BLEND);
         for (uint32_t y = 0; y < _dirtyGrid.BlockRows; y++)
         {
             for (uint32_t x = 0; x < _dirtyGrid.BlockColumns; x++)
@@ -356,8 +361,8 @@ private:
                     ddRect.w = static_cast<int32_t>(_dirtyGrid.BlockWidth * scaleX);
                     ddRect.h = static_cast<int32_t>(_dirtyGrid.BlockHeight * scaleY);
 
-                    SDL_SetRenderDrawColor(_sdlRenderer, 255, 255, 255, alpha);
-                    SDL_RenderFillRect(_sdlRenderer, &ddRect);
+                    SDL_SetRenderDrawColor(_sdlRenderer.get(), 255, 255, 255, alpha);
+                    SDL_RenderFillRect(_sdlRenderer.get(), &ddRect);
                 }
             }
         }
@@ -366,7 +371,7 @@ private:
     void ReadCentrePixel(uint32_t* pixel)
     {
         SDL_Rect centrePixelRegion = { static_cast<int32_t>(_width / 2), static_cast<int32_t>(_height / 2), 1, 1 };
-        SDL_RenderReadPixels(_sdlRenderer, &centrePixelRegion, SDL_PIXELFORMAT_RGBA8888, pixel, sizeof(uint32_t));
+        SDL_RenderReadPixels(_sdlRenderer.get(), &centrePixelRegion, SDL_PIXELFORMAT_RGBA8888, pixel, sizeof(uint32_t));
     }
 
     // Should be called before SDL_RenderPresent to capture frame buffer before Steam overlay is drawn.
