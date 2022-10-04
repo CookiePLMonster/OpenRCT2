@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include "../SDLUniquePtr.h"
 #include "AudioFormat.h"
 
 #include <SDL.h>
@@ -48,11 +49,11 @@ namespace OpenRCT2::Audio
 #    pragma GCC diagnostic pop
 #endif
 
-    std::unique_ptr<SDLAudioSource> CreateAudioSource(SDL_RWops* rw);
-    std::unique_ptr<SDLAudioSource> CreateAudioSource(SDL_RWops* rw, uint32_t cssIndex);
+    std::unique_ptr<SDLAudioSource> CreateAudioSource(UniqueSDLRWOps rw);
+    std::unique_ptr<SDLAudioSource> CreateAudioSource(UniqueSDLRWOps rw, uint32_t cssIndex);
     std::unique_ptr<SDLAudioSource> CreateMemoryAudioSource(
         const AudioFormat& target, const AudioFormat& src, std::vector<uint8_t>&& pcmData);
-    std::unique_ptr<SDLAudioSource> CreateFlacAudioSource(SDL_RWops* rw);
-    std::unique_ptr<SDLAudioSource> CreateOggAudioSource(SDL_RWops* rw);
-    std::unique_ptr<SDLAudioSource> CreateWavAudioSource(SDL_RWops* rw);
+    std::unique_ptr<SDLAudioSource> CreateFlacAudioSource(UniqueSDLRWOps rw);
+    std::unique_ptr<SDLAudioSource> CreateOggAudioSource(UniqueSDLRWOps rw);
+    std::unique_ptr<SDLAudioSource> CreateWavAudioSource(UniqueSDLRWOps rw);
 } // namespace OpenRCT2::Audio

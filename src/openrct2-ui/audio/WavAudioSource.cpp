@@ -26,52 +26,48 @@ namespace OpenRCT2::Audio
         static constexpr uint32_t WAVE = 0x45564157;
         static constexpr uint16_t pcmformat = 0x0001;
 
-        SDL_RWops* _rw{};
+        UniqueSDLRWOps _rw;
         AudioFormat _format = {};
         uint64_t _dataBegin{};
         uint64_t _dataLength{};
 
     public:
-        WavAudioSource(SDL_RWops* rw)
-            : _rw(rw)
+        WavAudioSource(UniqueSDLRWOps rw)
+            : _rw(std::move(rw))
         {
-            auto chunkId = SDL_ReadLE32(rw);
+            auto chunkId = SDL_ReadLE32(_rw.get());
             if (chunkId != RIFF)
             {
-                SDL_RWclose(rw);
                 throw std::runtime_error("Not a WAV file");
             }
 
             // Read and discard chunk size
-            SDL_ReadLE32(rw);
-            auto chunkFormat = SDL_ReadLE32(rw);
+            SDL_ReadLE32(_rw.get());
+            auto chunkFormat = SDL_ReadLE32(_rw.get());
             if (chunkFormat != WAVE)
             {
-                SDL_RWclose(rw);
                 throw std::runtime_error("Not in WAVE format");
             }
 
-            auto fmtChunkSize = FindChunk(rw, FMT);
+            auto fmtChunkSize = FindChunk(_rw.get(), FMT);
             if (!fmtChunkSize)
             {
-                SDL_RWclose(rw);
                 throw std::runtime_error("Could not find FMT chunk");
             }
 
-            auto chunkStart = SDL_RWtell(rw);
+            auto chunkStart = SDL_RWtell(_rw.get());
 
-            auto encoding = SDL_ReadLE16(rw);
+            auto encoding = SDL_ReadLE16(_rw.get());
             if (encoding != pcmformat)
             {
-                SDL_RWclose(rw);
                 throw std::runtime_error("Not in PCM format");
             }
 
-            _format.channels = SDL_ReadLE16(rw);
-            _format.freq = SDL_ReadLE32(rw);
-            [[maybe_unused]] auto byterate = SDL_ReadLE32(rw);
-            [[maybe_unused]] auto blockalign = SDL_ReadLE16(rw);
-            [[maybe_unused]] auto bitspersample = SDL_ReadLE16(rw);
+            _format.channels = SDL_ReadLE16(_rw.get());
+            _format.freq = SDL_ReadLE32(_rw.get());
+            [[maybe_unused]] auto byterate = SDL_ReadLE32(_rw.get());
+            [[maybe_unused]] auto blockalign = SDL_ReadLE16(_rw.get());
+            [[maybe_unused]] auto bitspersample = SDL_ReadLE16(_rw.get());
             switch (bitspersample)
             {
                 case 8:
@@ -81,21 +77,19 @@ namespace OpenRCT2::Audio
                     _format.format = AUDIO_S16LSB;
                     break;
                 default:
-                    SDL_RWclose(rw);
                     throw std::runtime_error("Unsupported bits per sample");
             }
 
-            SDL_RWseek(rw, chunkStart + fmtChunkSize, RW_SEEK_SET);
+            SDL_RWseek(_rw.get(), chunkStart + fmtChunkSize, RW_SEEK_SET);
 
-            auto dataChunkSize = FindChunk(rw, DATA);
+            auto dataChunkSize = FindChunk(_rw.get(), DATA);
             if (dataChunkSize == 0)
             {
-                SDL_RWclose(rw);
                 throw std::runtime_error("Could not find DATA chunk");
             }
 
             _dataLength = dataChunkSize;
-            _dataBegin = static_cast<uint64_t>(SDL_RWtell(rw));
+            _dataBegin = static_cast<uint64_t>(SDL_RWtell(_rw.get()));
         }
 
         ~WavAudioSource() override
@@ -116,20 +110,20 @@ namespace OpenRCT2::Audio
         size_t Read(void* dst, uint64_t offset, size_t len) override
         {
             size_t bytesRead = 0;
-            int64_t currentPosition = SDL_RWtell(_rw);
+            int64_t currentPosition = SDL_RWtell(_rw.get());
             if (currentPosition != -1)
             {
                 size_t bytesToRead = static_cast<size_t>(std::min<uint64_t>(len, _dataLength - offset));
                 int64_t dataOffset = _dataBegin + offset;
                 if (currentPosition != dataOffset)
                 {
-                    int64_t newPosition = SDL_RWseek(_rw, dataOffset, SEEK_SET);
+                    int64_t newPosition = SDL_RWseek(_rw.get(), dataOffset, SEEK_SET);
                     if (newPosition == -1)
                     {
                         return 0;
                     }
                 }
-                bytesRead = SDL_RWread(_rw, dst, 1, bytesToRead);
+                bytesRead = SDL_RWread(_rw.get(), dst, 1, bytesToRead);
             }
             return bytesRead;
         }
@@ -137,11 +131,7 @@ namespace OpenRCT2::Audio
     protected:
         void Unload() override
         {
-            if (_rw != nullptr)
-            {
-                SDL_RWclose(_rw);
-                _rw = nullptr;
-            }
+            _rw.reset();
             _dataBegin = 0;
             _dataLength = 0;
         }
@@ -173,8 +163,8 @@ namespace OpenRCT2::Audio
         }
     };
 
-    std::unique_ptr<SDLAudioSource> CreateWavAudioSource(SDL_RWops* rw)
+    std::unique_ptr<SDLAudioSource> CreateWavAudioSource(UniqueSDLRWOps rw)
     {
-        return std::make_unique<WavAudioSource>(rw);
+        return std::make_unique<WavAudioSource>(std::move(rw));
     }
 } // namespace OpenRCT2::Audio

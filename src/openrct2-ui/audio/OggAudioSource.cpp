@@ -28,7 +28,7 @@ namespace OpenRCT2::Audio
     {
     private:
         AudioFormat _format = {};
-        SDL_RWops* _rw = nullptr;
+        UniqueSDLRWOps _rw;
 
         std::optional<OggVorbis_File> _file;
         uint64_t _dataLength{};
@@ -52,16 +52,16 @@ namespace OpenRCT2::Audio
             return _format;
         }
 
-        bool LoadOgg(SDL_RWops* rw)
+        bool LoadOgg(UniqueSDLRWOps rw)
         {
-            _rw = rw;
+            _rw = std::move(rw);
 
             ov_callbacks callbacks{};
             callbacks.read_func = VorbisCallbackRead;
             callbacks.tell_func = VorbisCallbackTell;
             callbacks.seek_func = VorbisCallbackSeek;
             _file.emplace();
-            if (ov_open_callbacks(_rw, &*_file, NULL, 0, callbacks) < 0)
+            if (ov_open_callbacks(_rw.get(), &*_file, NULL, 0, callbacks) < 0)
             {
                 log_verbose("Could not open OGG/Vorbis stream");
                 return false;
@@ -127,11 +127,7 @@ namespace OpenRCT2::Audio
             {
                 ov_clear(&*_file);
             }
-            if (_rw != nullptr)
-            {
-                SDL_RWclose(_rw);
-                _rw = nullptr;
-            }
+            _rw.reset();
         }
 
     private:
@@ -152,11 +148,11 @@ namespace OpenRCT2::Audio
     };
 #endif
 
-    std::unique_ptr<SDLAudioSource> CreateOggAudioSource(SDL_RWops* rw)
+    std::unique_ptr<SDLAudioSource> CreateOggAudioSource(UniqueSDLRWOps rw)
     {
 #ifndef DISABLE_VORBIS
         auto source = std::make_unique<OggAudioSource>();
-        if (!source->LoadOgg(rw))
+        if (!source->LoadOgg(std::move(rw)))
         {
             throw std::runtime_error("Unable to load OGG/vorbis stream");
         }

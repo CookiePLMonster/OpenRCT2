@@ -15,7 +15,6 @@
 #include <openrct2/common.h>
 #include <string>
 
-struct SDL_RWops;
 using SpeexResamplerState = struct SpeexResamplerState_;
 
 namespace OpenRCT2::Audio

@@ -76,6 +76,7 @@
     <ClInclude Include="scripting\ScWindow.hpp" />
     <ClInclude Include="scripting\UiExtensions.h" />
     <ClInclude Include="SDLException.h" />
+    <ClInclude Include="SDLUniquePtr.h" />
     <ClInclude Include="TextComposition.h" />
     <ClInclude Include="title\TitleSequencePlayer.h" />
     <ClInclude Include="Ui.h" />
@@ -127,6 +128,7 @@
     <ClCompile Include="scripting\CustomWindow.cpp" />
     <ClCompile Include="scripting\UiExtensions.cpp" />
     <ClCompile Include="SDLException.cpp" />
+    <ClCompile Include="SDLUniquePtr.cpp" />
     <ClCompile Include="TextComposition.cpp" />
     <ClCompile Include="title\TitleSequencePlayer.cpp" />
     <ClCompile Include="Ui.cpp" />

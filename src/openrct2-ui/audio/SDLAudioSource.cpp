@@ -100,41 +100,41 @@ static AudioCodecKind GetAudioCodec(SDL_RWops* rw)
     }
 }
 
-std::unique_ptr<SDLAudioSource> OpenRCT2::Audio::CreateAudioSource(SDL_RWops* rw)
+std::unique_ptr<SDLAudioSource> OpenRCT2::Audio::CreateAudioSource(UniqueSDLRWOps rw)
 {
-    auto codec = GetAudioCodec(rw);
+    auto codec = GetAudioCodec(rw.get());
     switch (codec)
     {
         case AudioCodecKind::Flac:
-            return CreateFlacAudioSource(rw);
+            return CreateFlacAudioSource(std::move(rw));
         case AudioCodecKind::Ogg:
-            return CreateOggAudioSource(rw);
+            return CreateOggAudioSource(std::move(rw));
         case AudioCodecKind::Wav:
-            return CreateWavAudioSource(rw);
+            return CreateWavAudioSource(std::move(rw));
         default:
             throw std::runtime_error("Unsupported audio codec");
     }
 }
 
-std::unique_ptr<SDLAudioSource> OpenRCT2::Audio::CreateAudioSource(SDL_RWops* rw, uint32_t cssIndex)
+std::unique_ptr<SDLAudioSource> OpenRCT2::Audio::CreateAudioSource(UniqueSDLRWOps rw, uint32_t cssIndex)
 {
-    auto numSounds = SDL_ReadLE32(rw);
+    auto numSounds = SDL_ReadLE32(rw.get());
     if (cssIndex < numSounds)
     {
-        SDL_RWseek(rw, cssIndex * 4, RW_SEEK_CUR);
+        SDL_RWseek(rw.get(), cssIndex * 4, RW_SEEK_CUR);
 
-        auto pcmOffset = SDL_ReadLE32(rw);
-        SDL_RWseek(rw, pcmOffset, RW_SEEK_SET);
+        auto pcmOffset = SDL_ReadLE32(rw.get());
+        SDL_RWseek(rw.get(), pcmOffset, RW_SEEK_SET);
 
-        auto pcmLength = SDL_ReadLE32(rw);
+        auto pcmLength = SDL_ReadLE32(rw.get());
 
         AudioFormat format;
-        [[maybe_unused]] auto encoding = SDL_ReadLE16(rw);
-        format.channels = SDL_ReadLE16(rw);
-        format.freq = SDL_ReadLE32(rw);
-        [[maybe_unused]] auto byterate = SDL_ReadLE32(rw);
-        [[maybe_unused]] auto blockalign = SDL_ReadLE16(rw);
-        [[maybe_unused]] auto bitspersample = SDL_ReadLE16(rw);
+        [[maybe_unused]] auto encoding = SDL_ReadLE16(rw.get());
+        format.channels = SDL_ReadLE16(rw.get());
+        format.freq = SDL_ReadLE32(rw.get());
+        [[maybe_unused]] auto byterate = SDL_ReadLE32(rw.get());
+        [[maybe_unused]] auto blockalign = SDL_ReadLE16(rw.get());
+        [[maybe_unused]] auto bitspersample = SDL_ReadLE16(rw.get());
         switch (bitspersample)
         {
             case 8:
@@ -144,21 +144,18 @@ std::unique_ptr<SDLAudioSource> OpenRCT2::Audio::CreateAudioSource(SDL_RWops* rw
                 format.format = AUDIO_S16LSB;
                 break;
             default:
-                SDL_RWclose(rw);
                 throw std::runtime_error("Unsupported bits per sample");
         }
-        [[maybe_unused]] auto extrasize = SDL_ReadLE16(rw);
+        [[maybe_unused]] auto extrasize = SDL_ReadLE16(rw.get());
 
         std::vector<uint8_t> pcmData;
         pcmData.resize(pcmLength);
-        SDL_RWread(rw, pcmData.data(), pcmLength, 1);
+        SDL_RWread(rw.get(), pcmData.data(), pcmLength, 1);
 
-        SDL_RWclose(rw);
         return CreateMemoryAudioSource(format, format, std::move(pcmData));
     }
     else
     {
-        SDL_RWclose(rw);
         throw std::runtime_error("CSS does not contain required entry");
     }
 }

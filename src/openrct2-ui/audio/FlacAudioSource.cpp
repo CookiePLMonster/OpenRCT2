@@ -28,7 +28,7 @@ namespace OpenRCT2::Audio
     {
     private:
         AudioFormat _format = {};
-        SDL_RWops* _rw = nullptr;
+        UniqueSDLRWOps _rw;
 
         FLAC__StreamDecoder* _decoder{};
         uint32_t _bitsPerSample{};
@@ -54,9 +54,9 @@ namespace OpenRCT2::Audio
             return _format;
         }
 
-        bool LoadFlac(SDL_RWops* rw)
+        bool LoadFlac(UniqueSDLRWOps rw)
         {
-            _rw = rw;
+            _rw = std::move(rw);
             _decoder = FLAC__stream_decoder_new();
             if (_decoder == nullptr)
             {
@@ -116,11 +116,7 @@ namespace OpenRCT2::Audio
             {
                 FLAC__stream_decoder_delete(_decoder);
             }
-            if (_rw != nullptr)
-            {
-                SDL_RWclose(_rw);
-                _rw = nullptr;
-            }
+            _rw.reset();
         }
 
     private:
@@ -173,7 +169,7 @@ namespace OpenRCT2::Audio
             auto* self = reinterpret_cast<FlacAudioSource*>(clientData);
             if (*bytes > 0)
             {
-                *bytes = SDL_RWread(self->_rw, buffer, sizeof(FLAC__byte), *bytes);
+                *bytes = SDL_RWread(self->_rw.get(), buffer, sizeof(FLAC__byte), *bytes);
                 if (*bytes == 0)
                 {
                     return FLAC__STREAM_DECODER_READ_STATUS_END_OF_STREAM;
@@ -193,7 +189,7 @@ namespace OpenRCT2::Audio
             const FLAC__StreamDecoder* decoder, FLAC__uint64 absoluteByteOffset, void* clientData)
         {
             auto* self = reinterpret_cast<FlacAudioSource*>(clientData);
-            if (SDL_RWseek(self->_rw, absoluteByteOffset, RW_SEEK_SET) < 0)
+            if (SDL_RWseek(self->_rw.get(), absoluteByteOffset, RW_SEEK_SET) < 0)
             {
                 return FLAC__STREAM_DECODER_SEEK_STATUS_ERROR;
             }
@@ -207,7 +203,7 @@ namespace OpenRCT2::Audio
             const FLAC__StreamDecoder* decoder, FLAC__uint64* absoluteByteOffset, void* clientData)
         {
             auto* self = reinterpret_cast<FlacAudioSource*>(clientData);
-            auto pos = SDL_RWtell(self->_rw);
+            auto pos = SDL_RWtell(self->_rw.get());
             if (pos < 0)
             {
                 return FLAC__STREAM_DECODER_TELL_STATUS_ERROR;
@@ -223,9 +219,9 @@ namespace OpenRCT2::Audio
             const FLAC__StreamDecoder* decoder, FLAC__uint64* streamLength, void* clientData)
         {
             auto* self = reinterpret_cast<FlacAudioSource*>(clientData);
-            auto pos = SDL_RWtell(self->_rw);
-            auto length = SDL_RWseek(self->_rw, 0, RW_SEEK_END);
-            if (SDL_RWseek(self->_rw, pos, RW_SEEK_SET) != pos || length < 0)
+            auto pos = SDL_RWtell(self->_rw.get());
+            auto length = SDL_RWseek(self->_rw.get(), 0, RW_SEEK_END);
+            if (SDL_RWseek(self->_rw.get(), pos, RW_SEEK_SET) != pos || length < 0)
             {
                 return FLAC__STREAM_DECODER_LENGTH_STATUS_ERROR;
             }
@@ -239,15 +235,15 @@ namespace OpenRCT2::Audio
         static FLAC__bool FlacCallbackEof(const FLAC__StreamDecoder* decoder, void* clientData)
         {
             auto* self = reinterpret_cast<FlacAudioSource*>(clientData);
-            auto pos = SDL_RWtell(self->_rw);
-            auto end = SDL_RWseek(self->_rw, 0, RW_SEEK_END);
+            auto pos = SDL_RWtell(self->_rw.get());
+            auto end = SDL_RWseek(self->_rw.get(), 0, RW_SEEK_END);
             if (pos == end)
             {
                 return true;
             }
             else
             {
-                SDL_RWseek(self->_rw, pos, RW_SEEK_SET);
+                SDL_RWseek(self->_rw.get(), pos, RW_SEEK_SET);
                 return false;
             }
         }
@@ -319,11 +315,11 @@ namespace OpenRCT2::Audio
     };
 #endif
 
-    std::unique_ptr<SDLAudioSource> CreateFlacAudioSource(SDL_RWops* rw)
+    std::unique_ptr<SDLAudioSource> CreateFlacAudioSource(UniqueSDLRWOps rw)
     {
 #ifndef DISABLE_FLAC
         auto source = std::make_unique<FlacAudioSource>();
-        if (!source->LoadFlac(rw))
+        if (!source->LoadFlac(std::move(rw)))
         {
             throw std::runtime_error("Unable to load FLAC stream");
         }

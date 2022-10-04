@@ -10,6 +10,7 @@
 #include "AudioContext.h"
 
 #include "../SDLException.h"
+#include "../SDLUniquePtr.h"
 #include "AudioMixer.h"
 #include "SDLAudioSource.h"
 
@@ -72,7 +73,7 @@ namespace OpenRCT2::Audio
 
         IAudioSource* CreateStreamFromCSS(std::unique_ptr<IStream> stream, uint32_t index) override
         {
-            auto* rw = StreamToSDL2(std::move(stream));
+            auto rw = StreamToSDL2(std::move(stream));
             if (rw == nullptr)
             {
                 return nullptr;
@@ -80,7 +81,7 @@ namespace OpenRCT2::Audio
 
             try
             {
-                auto source = CreateAudioSource(rw, index);
+                auto source = CreateAudioSource(std::move(rw), index);
 
                 // Stream will already be in memory, so convert to target format
                 auto& targetFormat = _audioMixer->GetFormat();
@@ -97,7 +98,7 @@ namespace OpenRCT2::Audio
 
         IAudioSource* CreateStreamFromWAV(std::unique_ptr<IStream> stream) override
         {
-            auto* rw = StreamToSDL2(std::move(stream));
+            auto rw = StreamToSDL2(std::move(stream));
             if (rw == nullptr)
             {
                 return nullptr;
@@ -105,7 +106,7 @@ namespace OpenRCT2::Audio
 
             try
             {
-                auto source = CreateAudioSource(rw);
+                auto source = CreateAudioSource(std::move(rw));
 
                 // Load whole stream into memory if small enough
                 auto dataLength = source->GetLength();
@@ -160,9 +161,9 @@ namespace OpenRCT2::Audio
             return _audioMixer->AddSource(std::move(source));
         }
 
-        static SDL_RWops* StreamToSDL2(std::unique_ptr<IStream> stream)
+        static UniqueSDLRWOps StreamToSDL2(std::unique_ptr<IStream> stream)
         {
-            auto* rw = SDL_AllocRW();
+            auto rw = UniqueSDLRWOps(SDL_AllocRW());
             if (rw == nullptr)
                 return nullptr;
             *rw = {};
@@ -186,7 +187,7 @@ namespace OpenRCT2::Audio
                 auto* ptr = static_cast<IStream*>(ctx->hidden.unknown.data1);
                 delete ptr;
                 ctx->hidden.unknown.data1 = nullptr;
-                SDL_free(ctx);
+                SDL_FreeRW(ctx);
                 return 0;
             };
             return rw;
