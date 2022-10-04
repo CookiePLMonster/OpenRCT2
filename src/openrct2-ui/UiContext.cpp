@@ -11,6 +11,7 @@
 
 #include "CursorRepository.h"
 #include "SDLException.h"
+#include "SDLUniquePtr.h"
 #include "TextComposition.h"
 #include "WindowManager.h"
 #include "drawing/engines/DrawingEngineFactory.hpp"
@@ -70,7 +71,7 @@ private:
 
     CursorRepository _cursorRepository;
 
-    SDL_Window* _window = nullptr;
+    UniqueSDLWindow _window;
     int32_t _width = 0;
     int32_t _height = 0;
     ScaleQuality _scaleQuality = ScaleQuality::NearestNeighbour;
@@ -152,7 +153,7 @@ public:
     // Window
     void* GetWindow() override
     {
-        return _window;
+        return _window.get();
     }
 
     int32_t GetWidth() override
@@ -182,19 +183,19 @@ public:
         // HACK Changing window size when in fullscreen usually has no effect
         if (mode == FULLSCREEN_MODE::FULLSCREEN)
         {
-            SDL_SetWindowFullscreen(_window, 0);
+            SDL_SetWindowFullscreen(_window.get(), 0);
 
             // Set window size
             UpdateFullscreenResolutions();
             Resolution resolution = GetClosestResolution(gConfigGeneral.fullscreen_width, gConfigGeneral.fullscreen_height);
-            SDL_SetWindowSize(_window, resolution.Width, resolution.Height);
+            SDL_SetWindowSize(_window.get(), resolution.Width, resolution.Height);
         }
         else if (mode == FULLSCREEN_MODE::WINDOWED)
         {
-            SDL_SetWindowSize(_window, gConfigGeneral.window_width, gConfigGeneral.window_height);
+            SDL_SetWindowSize(_window.get(), gConfigGeneral.window_width, gConfigGeneral.window_height);
         }
 
-        if (SDL_SetWindowFullscreen(_window, windowFlags))
+        if (SDL_SetWindowFullscreen(_window.get(), windowFlags))
         {
             log_fatal("SDL_SetWindowFullscreen %s", SDL_GetError());
             exit(1);
@@ -276,7 +277,7 @@ public:
 
     void SetCursorTrap(bool value) override
     {
-        SDL_SetWindowGrab(_window, value ? SDL_TRUE : SDL_FALSE);
+        SDL_SetWindowGrab(_window.get(), value ? SDL_TRUE : SDL_FALSE);
     }
 
     void SetKeysPressed(uint32_t keysym, uint8_t scancode) override
@@ -350,7 +351,7 @@ public:
                         case SDL_WINDOWEVENT_RESTORED:
                         {
                             // Update default display index
-                            int32_t displayIndex = SDL_GetWindowDisplayIndex(_window);
+                            int32_t displayIndex = SDL_GetWindowDisplayIndex(_window.get());
                             if (displayIndex != gConfigGeneral.default_display)
                             {
                                 gConfigGeneral.default_display = displayIndex;
@@ -595,7 +596,7 @@ public:
         SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, scaleQualityBuffer);
 
         int32_t width, height;
-        SDL_GetWindowSize(_window, &width, &height);
+        SDL_GetWindowSize(_window.get(), &width, &height);
         OnResize(width, height);
     }
 
@@ -617,19 +618,15 @@ public:
     void CloseWindow() override
     {
         drawing_engine_dispose();
-        if (_window != nullptr)
-        {
-            SDL_DestroyWindow(_window);
-            _window = nullptr;
-        }
+        _window.reset();
     }
 
     void RecreateWindow() override
     {
         // Use the position of the current window for the new window
         ScreenCoordsXY windowPos;
-        SDL_SetWindowFullscreen(_window, 0);
-        SDL_GetWindowPosition(_window, &windowPos.x, &windowPos.y);
+        SDL_SetWindowFullscreen(_window.get(), 0);
+        SDL_GetWindowPosition(_window.get(), &windowPos.x, &windowPos.y);
 
         CloseWindow();
         CreateWindow(windowPos);
@@ -637,7 +634,7 @@ public:
 
     void ShowMessageBox(const std::string& message) override
     {
-        _platformUiContext->ShowMessageBox(_window, message);
+        _platformUiContext->ShowMessageBox(_window.get(), message);
     }
 
     int32_t ShowMessageBox(
@@ -651,7 +648,7 @@ public:
         }
 
         SDL_MessageBoxData message_box_data{};
-        message_box_data.window = _window;
+        message_box_data.window = _window.get();
         message_box_data.title = title.c_str();
         message_box_data.message = message.c_str();
         message_box_data.numbuttons = static_cast<int>(options.size());
@@ -686,12 +683,12 @@ public:
 
     std::string ShowFileDialog(const FileDialogDesc& desc) override
     {
-        return _platformUiContext->ShowFileDialog(_window, desc);
+        return _platformUiContext->ShowFileDialog(_window.get(), desc);
     }
 
     std::string ShowDirectoryDialog(const std::string& title) override
     {
-        return _platformUiContext->ShowDirectoryDialog(_window, title);
+        return _platformUiContext->ShowDirectoryDialog(_window.get(), title);
     }
 
     bool HasFilePicker() const override
@@ -745,7 +742,7 @@ private:
             flags |= SDL_WINDOW_OPENGL;
         }
 
-        _window = SDL_CreateWindow(OPENRCT2_NAME, windowPos.x, windowPos.y, width, height, flags);
+        _window = UniqueSDLWindow(SDL_CreateWindow(OPENRCT2_NAME, windowPos.x, windowPos.y, width, height, flags));
         if (_window == nullptr)
         {
             SDLException::Throw("SDL_CreateWindow(...)");
@@ -753,9 +750,9 @@ private:
 
         ApplyScreenSaverLockSetting();
 
-        SDL_SetWindowMinimumSize(_window, 720, 480);
+        SDL_SetWindowMinimumSize(_window.get(), 720, 480);
         SetCursorTrap(gConfigGeneral.trap_cursor);
-        _platformUiContext->SetWindowIcon(_window);
+        _platformUiContext->SetWindowIcon(_window.get());
 
         // Initialise the surface, palette and draw buffer
         drawing_engine_init();
@@ -780,7 +777,7 @@ private:
 
         drawing_engine_resize();
 
-        uint32_t flags = SDL_GetWindowFlags(_window);
+        uint32_t flags = SDL_GetWindowFlags(_window.get());
         if ((flags & SDL_WINDOW_MINIMIZED) == 0)
         {
             window_resize_gui(_width, _height);
@@ -810,7 +807,7 @@ private:
     void UpdateFullscreenResolutions()
     {
         // Query number of display modes
-        int32_t displayIndex = SDL_GetWindowDisplayIndex(_window);
+        int32_t displayIndex = SDL_GetWindowDisplayIndex(_window.get());
         int32_t numDisplayModes = SDL_GetNumDisplayModes(displayIndex);
 
         // Get desktop aspect ratio
@@ -883,7 +880,7 @@ private:
 
     uint32_t GetWindowFlags()
     {
-        return SDL_GetWindowFlags(_window);
+        return SDL_GetWindowFlags(_window.get());
     }
 
     static void DrawWeatherWindow(

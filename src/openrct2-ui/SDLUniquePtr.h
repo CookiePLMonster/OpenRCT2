@@ -12,6 +12,7 @@
 #include <memory>
 
 struct SDL_RWops;
+struct SDL_Window;
 
 /**
  * std::unique_ptr defines for SDL types, with appropriate deleters defined
@@ -19,6 +20,8 @@ struct SDL_RWops;
 struct SDLDeleter
 {
     void operator()(SDL_RWops* ptr) const;
+    void operator()(SDL_Window* ptr) const;
 };
 
 using UniqueSDLRWOps = std::unique_ptr<SDL_RWops, SDLDeleter>;
+using UniqueSDLWindow = std::unique_ptr<SDL_Window, SDLDeleter>;

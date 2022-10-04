@@ -18,3 +18,11 @@ void SDLDeleter::operator()(SDL_RWops* ptr) const
         SDL_RWclose(ptr);
     }
 }
+
+void SDLDeleter::operator()(SDL_Window* ptr) const
+{
+    if (ptr != nullptr)
+    {
+        SDL_DestroyWindow(ptr);
+    }
+}
